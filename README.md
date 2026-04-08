@@ -1,5 +1,5 @@
 # AutoCTM
-Automated Certificate Transparency Monitor written in GO 
+Automated Certificate Transparency Monitor written in GO.
 
 
 ## What is Certificate Transparency? 
@@ -18,4 +18,4 @@ In short
 
 ## How CT works
 
-Certificate Transparency is a system that requires all TLS certificates to be publicly logged, allowing domain owners and browsers to detect and reject unauthorized certificates.
+Certificate Transparency solves the problem of rogue certificate issuance by requiring every CA to submit certificates to public, append-only logs before browsers will trust them. This means anyone can monitor these logs to spot unauthorized certificates for their domain, and browsers will outright reject any certificate that lacks proof of being logged.
