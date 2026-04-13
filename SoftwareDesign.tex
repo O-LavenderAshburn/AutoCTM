@@ -1,5 +1,4 @@
 \documentclass{article}
-\usepackage{hyperref}
 \usepackage{geometry}
 \geometry{margin=1in}
 
@@ -27,6 +26,19 @@ and one or more independent monitor instances. The CLI may be closed at any
 time without affecting running instances. On relaunch the CLI reconnects to
 the broker and resumes control.
 
+\subsection{Known Limitations}
+\subsubsection{Broker as Single Point of Failure}
+The broker is a single point of failure for the control plane. If the broker
+dies:
+\begin{itemize}
+    \item The CLI cannot connect or issue commands.
+    \item Instance status becomes unknown until the broker is restarted.
+\end{itemize}
+This is an accepted limitation for a small internal tool. Instances are
+designed to continue monitoring and writing to the database independently of
+the broker. Operators can restart the broker at any time to resume control
+without affecting running instances.
+
 \subsection{Definitions}
 \begin{itemize}
     \item \textbf{CLI} --- The operator-facing command-line interface. A
@@ -34,10 +46,12 @@ the broker and resumes control.
     may be closed freely.
     \item \textbf{Broker} --- A persistent background daemon that owns the
     control socket, manages the instance registry, and routes commands from
-    the CLI to the appropriate instance.
+    the CLI to the appropriate instance. The broker is control plane only ---
+    it does not participate in certificate monitoring.
     \item \textbf{Instance} --- A long-running background process responsible
     for monitoring one or more CT logs, checking certificates, and raising
-    alerts.
+    alerts. Instances load their configuration directly from the database and
+    operate independently of the broker at runtime.
     \item \textbf{Active Instance} --- The instance currently selected in the
     CLI via \texttt{/set-instance}. Commands issued in instance context are
     routed to this instance.
@@ -64,17 +78,34 @@ AutoCTM is composed of three decoupled processes:
     automatically before presenting the command prompt. The CLI may be closed
     at any time; running instances are unaffected.
     \item \textbf{Broker} (\texttt{autoctm-broker}) --- A persistent daemon
-    that starts automatically on first CLI launch. It owns a Unix socket at a
-    known path, maintains the instance registry, and routes commands between
-    the CLI and instances. It remains alive independently of both the CLI and
-    any instance.
+    that starts automatically on first CLI launch. It owns a local control
+    socket at a well-known path, maintains the instance registry, and routes
+    commands between the CLI and instances. It remains alive independently of
+    both the CLI and any instance. The broker is control plane only --- loss
+    of the broker does not affect instance monitoring.
     \item \textbf{Monitor Instance} (\texttt{autoctm-instance}) --- A
     long-running background process spawned by the broker on \texttt{/start}.
-    Each instance independently polls its configured CT logs, processes
-    entries, performs watchlist and CRL checks, and raises alerts. Multiple
-    instances may run concurrently.
+    Each instance loads its configuration directly from the database,
+    independently polls its configured CT logs, processes entries, performs
+    watchlist and CRL checks, and raises alerts. Multiple instances may run
+    concurrently. Instances continue to operate if the broker becomes
+    unavailable.
 \end{itemize}
 
+\subsection{Separation of Responsibilities}
+To avoid ambiguity over configuration ownership, the system follows a clear
+separation of responsibilities:
+\begin{itemize}
+    \item \textbf{Database} --- The single source of truth for all
+    configuration and state, including instance config, log lists, watchlist,
+    STH state, and alerts.
+    \item \textbf{Broker} --- Orchestration only. Spawns instances, maintains
+    the instance registry, and routes control commands. Does not own
+    configuration.
+    \item \textbf{Instance} --- Worker. Loads all configuration directly from
+    the database on startup and re-reads it when notified of a change by the
+    broker.
+\end{itemize}
 
 \section{Architecture}
 
@@ -85,8 +116,7 @@ AutoCTM is composed of three decoupled processes:
 
 \subsubsection{Broker Startup}
 \begin{enumerate}
-    \item CLI launches and checks for a broker socket at the well-known path
-    (e.g. \texttt{/var/run/autoctm/broker.sock}).
+    \item CLI launches and checks for a broker socket at the well-known path.
     \item If no socket is found, the CLI forks and execs \texttt{autoctm-broker}
     as a detached background process, then waits for the socket to appear.
     \item The broker creates the socket, loads the instance registry from the
@@ -106,29 +136,49 @@ AutoCTM is composed of three decoupled processes:
 
 \subsubsection{Instance Lifecycle}
 \begin{enumerate}
-    \item The broker spawns a new instance process on receipt of \texttt{/start}.
-    \item The instance registers itself with the broker, providing its PID and
-    a unique instance ID (UUID).
-    \item The instance loads its configuration from the database and begins
+    \item The broker spawns a new instance process on receipt of
+    \texttt{/start}, passing only the instance ID.
+    \item The instance connects to the database and loads its full
+    configuration directly from the \texttt{instances} table.
+    \item The instance attempts to register with the broker via the control
+    socket. If the broker is unavailable, the instance shall continue startup
+    and retry registration periodically.
+    \item The instance spawns one goroutine per configured log and enters
     its polling loop.
     \item On \texttt{/shutdown} (targeted or global), the broker signals the
     instance to drain its current work and exit cleanly.
-    \item The instance deregisters from the broker on exit.
+    \item On exit, the instance updates its status to \texttt{stopped} in
+    the database.
+\end{enumerate}
+
+\subsubsection{Broker Restart Behaviour}
+If the broker is restarted it shall:
+\begin{enumerate}
+    \item Recreate the control socket at the well-known path.
+    \item Reload the instance registry from the database.
+    \item Wait for instances to reconnect and re-register. The broker shall
+    not attempt to reconnect to instances --- instances are responsible for
+    detecting the lost connection and re-registering with the restarted
+    broker.
+    \item Mark any instance that does not re-register within a configurable
+    timeout as \texttt{stopped}.
 \end{enumerate}
 
 \subsection{Inter-Process Communication}
-All IPC uses a Unix domain socket owned by the broker at a well-known path.
-Messages are encoded as newline-delimited JSON. There are two connection types:
+All IPC uses a local control socket owned by the broker at a well-known
+path. Messages are encoded as newline-delimited JSON. There are two
+connection types:
 
 \begin{itemize}
     \item \textbf{CLI $\rightarrow$ Broker} --- The CLI holds a persistent
     connection to the broker for the duration of its session.
-    \item \textbf{Broker $\rightarrow$ Instance} --- The broker holds a
-    persistent connection to each registered instance, used to forward
-    commands and receive status updates.
+    \item \textbf{Instance $\rightarrow$ Broker} --- Each instance initiates
+    and maintains a connection to the broker for registration and command
+    receipt. If the broker connection is lost, the instance shall keep
+    running and retry the connection periodically until the broker is
+    available again.
 \end{itemize}
 
-% ─────────────────────────────────────────────
 \section{Component Design}
 
 \subsection{CLI}
@@ -158,7 +208,8 @@ An active instance is selected via \texttt{/set-instance}. Commands are
 routed to that instance:
 \begin{itemize}
     \item \texttt{/add-log <url>} --- Add a CT log to the instance's
-    configuration.
+    configuration. The broker writes the new log to the database and
+    notifies the instance to reload its configuration.
     \item \texttt{/remove-log <url>} --- Remove a CT log from the instance's
     configuration.
     \item \texttt{/pause} --- Pause the instance's polling loop.
@@ -178,33 +229,44 @@ operator.
 \subsection{Broker}
 
 \subsubsection{Responsibilities}
+The broker is responsible for orchestration only. It shall:
 \begin{itemize}
-    \item Own and maintain the Unix control socket.
-    \item Maintain the instance registry (running instances, their IDs, PIDs,
-    and socket connections).
+    \item Own and maintain the local control socket.
+    \item Maintain an in-memory instance registry of connected instances,
+    backed by the database as the source of truth.
     \item Route CLI commands to the correct instance.
-    \item Spawn new instance processes on \texttt{/start}.
-    \item Persist instance registry state to the database so it survives a
-    broker restart.
+    \item Spawn new instance processes on \texttt{/start}, writing the new
+    instance record to the database before spawning.
+    \item Accept re-registration from instances after a broker restart.
+    \item Write instance status changes to the database.
 \end{itemize}
 
-\subsubsection{Broker Restart Behaviour}
-If the broker is restarted (e.g. after a system reboot), it shall reload the
-instance registry from the database and attempt to reconnect to any instances
-whose PID is still active. Instances that are no longer running shall be
-marked as stopped.
+The broker shall not hold instance configuration in memory. All configuration
+reads and writes go through the database.
 
 \subsection{Monitor Instance}
 
 \subsubsection{Startup Sequence}
 \begin{enumerate}
-    \item Receive configuration from the broker (instance ID, initial log
-    list if any).
-    \item Connect to PostgreSQL and verify schema.
-    \item Register with the broker via the control socket.
+    \item Receive instance ID from the broker at spawn time.
+    \item Connect to PostgreSQL and load full configuration from the
+    \texttt{instances} table using the instance ID.
+    \item Attempt to register with the broker. If unavailable, continue
+    and retry in the background.
     \item Spawn one goroutine per configured log.
     \item Enter polling loop.
 \end{enumerate}
+
+\subsubsection{Broker Connection Resilience}
+Instances shall treat the broker connection as optional at runtime:
+\begin{itemize}
+    \item If the broker connection is lost, the instance shall continue
+    its polling loop uninterrupted.
+    \item The instance shall periodically retry connecting and registering
+    with the broker using an exponential backoff.
+    \item On successful reconnection, the instance shall re-register and
+    resume accepting commands.
+\end{itemize}
 
 \subsubsection{Polling Loop}
 Each log goroutine shall independently perform the following steps:
@@ -219,7 +281,7 @@ Each log goroutine shall independently perform the following steps:
     \item Verify the Merkle consistency proof between the previous and new
     STH via \texttt{GET /ct/v2/get-sth-consistency}.
     \item Persist new entries and update the stored STH in the database.
-    \item Dispatch any pending alerts.
+    \item Dispatch any pending alerts via email.
     \item Wait for the configured poll interval and return to step 1.
 \end{enumerate}
 
@@ -238,13 +300,13 @@ DN. CRLs shall be refreshed on a configurable interval. Each observed
 certificate serial number shall be checked against the cached CRL for its
 issuer. A hit shall produce an alert record of type \texttt{revoked}.
 
-
 \section{Data Design}
 \label{sec:data}
 
 \subsection{Database}
 AutoCTM uses a local PostgreSQL instance as its storage backend. The database
-is shared across the broker and all monitor instances.
+is the single source of truth for all configuration and state. It is shared
+across the broker and all monitor instances.
 
 \subsection{Schema}
 
@@ -272,13 +334,18 @@ Stores all observed certificate entries.
 \end{itemize}
 
 \subsubsection{instances}
+Stores instance identity, status, and configuration. This is the source of
+truth for instance configuration --- instances load directly from this table
+on startup.
 \begin{itemize}
     \item \texttt{id} --- Instance ID (UUID).
     \item \texttt{pid} --- OS process ID.
     \item \texttt{status} --- Current status (\texttt{running},
     \texttt{paused}, \texttt{stopped}).
     \item \texttt{started\_at} --- Timestamp.
-    \item \texttt{config} --- JSONB blob of instance configuration (log URLs, public keys, poll interval).
+    \item \texttt{config} --- JSONB blob of instance configuration (log
+    URLs, public keys, poll interval). Written by the broker, read by
+    the instance.
 \end{itemize}
 
 \subsubsection{sth\_state}
@@ -306,20 +373,34 @@ Tracks the last known STH per log per instance.
 \section{Error Handling}
 
 \subsection{Log Unavailability}
-If a CT log is unreachable the instance shall log the failure and back off using exponential retry. If the log remains unavailable beyond the MMD the instance shall raise a \texttt{log\_misbehaviour} alert.
+If a CT log is unreachable the instance shall log the failure and back off
+using exponential retry. If the log remains unavailable beyond the MMD the
+instance shall raise a \texttt{log\_misbehaviour} alert.
 
 \subsection{Consistency Proof Failure}
-A consistency proof verification failure shall be treated as log misbehaviour. The instance shall record the failure, raise an alert, and pause polling of the affected log pending operator review via
-\texttt{/resume}.
+A consistency proof verification failure shall be treated as log
+misbehaviour. The instance shall record the failure, raise an alert, and
+pause polling of the affected log pending operator review via \texttt{/resume}.
 
 \subsection{Database Connectivity}
-If the database becomes unreachable the instance shall pause processing and retry on a backoff schedule. On recovery the instance shall resume from the last persisted STH state, re-fetching any entries missed during the outage.
+If the database becomes unreachable the instance shall pause processing and
+retry on a backoff schedule. On recovery the instance shall resume from the
+last persisted STH state, re-fetching any entries missed during the outage.
 
 \subsection{Broker Unavailability}
-If the CLI cannot reach the broker it shall attempt to auto-spawn a newbroker instance. If the broker cannot be spawned the CLI shall print a diagnostic error and exit.
+If the CLI cannot reach the broker it shall attempt to auto-spawn a new
+broker instance. If the broker cannot be spawned the CLI shall print a
+diagnostic error and exit.
+
+If a running instance loses its connection to the broker it shall continue
+monitoring uninterrupted and retry registration on an exponential backoff
+until the broker is available again.
 
 \subsection{Instance Crash}
-If an instance exits unexpectedly the broker shall detect the lost connection, mark the instance as \texttt{stopped} in the database, and notify the operator on the next CLI connection.
+If the instance crashes without a clean exit, the broker shall detect the lost
+connection and mark the instance as \texttt{stopped} in the database.
 
+If the broker detects that an instance connection has been lost unexpectedly,
+it shall mark the instance as stopped in the database.
 
 \end{document}
