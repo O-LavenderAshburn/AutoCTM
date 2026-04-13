@@ -49,6 +49,84 @@ AutoCTM is written in Go and must support the following requirements:
 
 
 \subsection{System Features}
+
+\subsubsection{CT Log Monitoring}
+AutoCTM shall monitor one or more RFC 9162-compliant CT logs. The system shall:
+\begin{itemize}
+    \item Poll each configured log for a new STH on a configurable interval.
+    \item Verify the STH signature before processing any entries.
+    \item Fetch all new entries since the last known STH.
+    \item Verify Merkle consistency proofs between successive STHs.
+    \item Support monitoring of multiple logs concurrently.
+\end{itemize}
+
+\subsubsection{Certificate Storage}
+AutoCTM shall persist all observed certificate entries to a local database. 
+The system shall:
+\begin{itemize}
+    \item Store the leaf hash, log ID, timestamp, subject, SANs, issuer, 
+    and expiry for each observed certificate.
+    \item Prevent duplicate entries for the same leaf hash across logs.
+    \item Support querying stored certificates by domain, issuer, and 
+    date range.
+\end{itemize}
+
+\subsubsection{Certificate Revocation Checking}
+AutoCTM shall check observed certificates against Certificate Revocation 
+Lists (CRLs). The system shall:
+\begin{itemize}
+    \item Fetch and parse CRLs for each issuer observed in monitored logs.
+    \item Refresh CRLs on a configurable interval.
+    \item Flag and record any certificate whose serial number appears in 
+    a current CRL.
+\end{itemize}
+
+\subsubsection{Domain Watchlist Alerting}
+AutoCTM shall allow operators to configure a watchlist of domains to 
+monitor for unexpected certificate issuance. The system shall:
+\begin{itemize}
+    \item Match observed certificates against the watchlist by exact domain 
+    and wildcard SAN.
+    \item Raise an alert for any certificate covering a watched domain.
+    \item Support adding and removing watchlist entries without restarting 
+    the service.
+\end{itemize}
+
+\subsubsection{Log Integrity Auditing}
+AutoCTM shall detect and report misbehaviour in monitored logs as defined 
+in RFC 9162. The system shall:
+\begin{itemize}
+    \item Detect and report STHs that exceed the log's declared Maximum 
+    Merge Delay (MMD).
+    \item Report entries that remain unavailable for an extended period 
+    after appearing in an STH.
+    \item Record and report any consistency proof verification failure.
+\end{itemize}
+
+\subsubsection{Configuration Management}
+AutoCTM shall allow operators to manage the system configuration at runtime. 
+The system shall:
+\begin{itemize}
+    \item Support adding and removing monitored logs without restarting 
+    the service.
+    \item Validate log configuration against required RFC 9162 parameters 
+    (base URL, public key, MMD) on load.
+    \item Store configuration in a human-readable file format.
+\end{itemize}
+
+\subsubsection{Alert Notification}
+AutoCTM shall deliver alerts to operators via configurable notification 
+channels. The system shall:
+\begin{itemize}
+    \item Support at least one outbound notification channel 
+    (e.g. email or webhook).
+    \item Include in each alert the affected certificate details, the 
+    triggering log, and the reason for the alert.
+    \item Avoid duplicate alerts for the same certificate and alert type.
+\end{itemize}
+
+
+
 \subsection{Non-Functional Requirements}
 
 
