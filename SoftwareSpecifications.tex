@@ -1,0 +1,56 @@
+\documentclass{article}
+\usepackage{graphicx} % 
+\title{AutoCTM Software Specifiaction}
+\author{Oscar Ashburn}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document specifies the functional and technical requirements for AutoCTM (Automated Certificate Transparency Monitor), a tool written in Go for monitoring Certificate Transparency (CT) logs. It defines the system's expected behaviour, interfaces, and constraints, serving as the authoritative reference for the design and implementation of AutoCTM.
+\end{abstract}
+\newpage
+
+\section{Introduction}
+
+\subsection{What is Certificate Transparency}
+Certificate Transparency (CT) is a system designed to make TLS/SSL certificate issuance public, auditable, and verifiable. It helps prevent mis-issued or rogue certificates and increases trust in HTTPS.
+
+\subsection{The Problem}
+Certificate Authorities (CAs) issue TLS/SSL certificates for domains. Sometimes, a CA can mistakenly issue a certificate to the wrong party, or a malicious actor could obtain one. Without transparency, domain owners might not know about these certificates until it’s too late.
+
+CAs can mistakenly or maliciously issue certificates for domains they shouldn't
+Domain owners may have no visibility into certificates issued in their name
+
+The window of unawareness is the dangerous part. An attacker could use a fraudulent certificate before anyone notices
+
+\subsection{How CT works}
+Certificate Transparency solves the problem of rogue certificate issuance by requiring every CA to submit certificates to public, append-only logs before browsers will trust them. This means anyone can monitor these logs to spot unauthorized certificates for their domain, and browsers will outright reject any certificate that lacks proof of being logged.
+
+\section{Design Description}
+AutoCTM is written in Go and must support the following requirements:
+\begin{itemize}
+    \item \textbf{Certificate Log Monitoring.} The system shall poll one or 
+    more RFC 9162-compliant CT logs, fetching new entries on each STH change, 
+    verifying STH signatures, and validating Merkle consistency proofs between 
+    successive Signed Tree Heads.
+    \item \textbf{Certificate Database.} The system shall persist all observed 
+    certificate entries to a local database, recording at minimum the leaf hash, 
+    log ID, timestamp, subject, SANs, and issuer for each entry.
+    \item \textbf{Certificate Revocation Checking.} The system shall check 
+    observed certificates against current Certificate Revocation Lists (CRLs) 
+    and flag any certificates whose serial number appears as revoked.
+    \item \textbf{Domain Alerting.} The system shall allow operators to configure 
+    a watchlist of domains and shall raise an alert whenever a certificate 
+    covering a watched domain is observed in any monitored log.
+\end{itemize}
+
+
+\subsection{System Features}
+\subsection{Non-Functional Requirements}
+
+
+
+\end{document}
