@@ -7,7 +7,13 @@
 \date{}
 
 \begin{document}
+
 \maketitle
+
+\begin{abstract}
+This document is the Software Design Specification for AutoCTM, a Certificate Transparency monitor written in Go. It describes the system architecture, component responsibilities, inter-process communication, data schema, and error handling strategies that guide the implementation of AutoCTM. The system is composed of three decoupled processes (a CLI, a persistent broker daemon, and one or more independent monitor instances) that together enable operators to monitor RFC 9162-compliant CT logs for certificate issuance against a configurable domain watchlist
+\end{abstract}
+\newpage
 \tableofcontents
 \newpage
 
