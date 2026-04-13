@@ -1,6 +1,7 @@
 \documentclass{article}
-\usepackage{graphicx} % 
-\title{AutoCTM Software Specifiaction}
+\usepackage{graphicx}
+
+\title{AutoCTM Software Specification}
 \author{Oscar Ashburn}
 \date{April 2026}
 
@@ -9,64 +10,156 @@
 \maketitle
 
 \begin{abstract}
-This document specifies the functional and technical requirements for AutoCTM (Automated Certificate Transparency Monitor), a tool written in Go for monitoring Certificate Transparency (CT) logs. It defines the system's expected behaviour, interfaces, and constraints, serving as the authoritative reference for the design and implementation of AutoCTM.
+This document specifies the functional and technical requirements for AutoCTM 
+(Automated Certificate Transparency Monitor), a tool written in Go for 
+monitoring Certificate Transparency (CT) logs. It defines the system's 
+expected behaviour, interfaces, and constraints, serving as the authoritative 
+reference for the design and implementation of AutoCTM.
 \end{abstract}
 \newpage
 
 \section{Introduction}
 
 \subsection{What is Certificate Transparency}
-Certificate Transparency (CT) is a system designed to make TLS/SSL certificate issuance public, auditable, and verifiable. It helps prevent mis-issued or rogue certificates and increases trust in HTTPS.
+Certificate Transparency (CT) is a system designed to make TLS/SSL certificate 
+issuance public, auditable, and verifiable. It helps prevent mis-issued or 
+rogue certificates and increases trust in HTTPS.
 
 \subsection{The Problem}
-Certificate Authorities (CAs) issue TLS/SSL certificates for domains. Sometimes, a CA can mistakenly issue a certificate to the wrong party, or a malicious actor could obtain one. Without transparency, domain owners might not know about these certificates until it’s too late.
+Certificate Authorities (CAs) issue TLS/SSL certificates for domains. 
+Sometimes, a CA can mistakenly issue a certificate to the wrong party, or a 
+malicious actor could obtain one. Without transparency, domain owners might 
+not know about these certificates until it is too late.
 
-CAs can mistakenly or maliciously issue certificates for domains they shouldn't
-Domain owners may have no visibility into certificates issued in their name
-
-The window of unawareness is the dangerous part. An attacker could use a fraudulent certificate before anyone notices
-
-\subsection{How CT works}
-Certificate Transparency solves the problem of rogue certificate issuance by requiring every CA to submit certificates to public, append-only logs before browsers will trust them. This means anyone can monitor these logs to spot unauthorized certificates for their domain, and browsers will outright reject any certificate that lacks proof of being logged.
-
-\section{Design Description}
-AutoCTM is written in Go and must support the following requirements:
 \begin{itemize}
-    \item \textbf{Certificate Log Monitoring.} The system shall poll one or 
-    more RFC 9162-compliant CT logs, fetching new entries on each STH change, 
-    verifying STH signatures, and validating Merkle consistency proofs between 
-    successive Signed Tree Heads.
-    \item \textbf{Certificate Database.} The system shall persist all observed 
-    certificate entries to a local database, recording at minimum the leaf hash, 
-    log ID, timestamp, subject, SANs, and issuer for each entry.
-    \item \textbf{Certificate Revocation Checking.} The system shall check 
-    observed certificates against current Certificate Revocation Lists (CRLs) 
-    and flag any certificates whose serial number appears as revoked.
-    \item \textbf{Domain Alerting.} The system shall allow operators to configure 
-    a watchlist of domains and shall raise an alert whenever a certificate 
-    covering a watched domain is observed in any monitored log.
+    \item CAs can mistakenly or maliciously issue certificates for domains 
+    they should not.
+    \item Domain owners may have no visibility into certificates issued in 
+    their name.
+    \item The window of unawareness is the dangerous part. An attacker could 
+    use a fraudulent certificate before anyone notices.
 \end{itemize}
 
+\subsection{How CT Works}
+Certificate Transparency solves the problem of rogue certificate issuance by 
+requiring every CA to submit certificates to public, append-only logs before 
+browsers will trust them. This means anyone can monitor these logs to spot 
+unauthorised certificates for their domain, and browsers will outright reject 
+any certificate that lacks proof of being logged.
+
+\section{Design Description}
+AutoCTM is written in Go and is composed of three decoupled processes: a 
+persistent broker daemon (\texttt{autoctm-broker}), one or more monitor 
+instances (\texttt{autoctm-instance}), and a lightweight operator CLI 
+(\texttt{autoctm}). The system must support the following requirements:
+
+\begin{itemize}
+    \item \textbf{Broker Daemon.} The system shall run a persistent background 
+    broker process that owns the control socket, manages the instance registry, 
+    and routes commands between the CLI and monitor instances. The broker shall 
+    start automatically on first CLI launch and remain running independently 
+    of the CLI.
+
+    \item \textbf{CLI Interface.} The system shall provide a command-line 
+    interface that connects to the broker on launch, accepts operator commands, 
+    and may be closed at any time without affecting running instances. On 
+    relaunch the CLI shall reconnect to the existing broker and resume control.
+
+    \item \textbf{Monitor Instances.} The system shall support spawning one or 
+    more independent monitor instances as background processes. Each instance 
+    shall monitor one or more RFC 9162-compliant CT logs, polling for new 
+    entries, verifying STH signatures, and validating Merkle consistency proofs 
+    between successive Signed Tree Heads.
+
+    \item \textbf{Certificate Database.} The system shall persist all observed 
+    certificate entries to a shared PostgreSQL database, recording at minimum 
+    the leaf hash, log ID, timestamp, subject, SANs, issuer, and serial number 
+    for each entry.
+
+    \item \textbf{Certificate Revocation Checking.} The system shall check 
+    observed certificates against current Certificate Revocation Lists (CRLs) 
+    and flag any certificate whose serial number appears as revoked.
+
+    \item \textbf{Domain Watchlist Alerting.} The system shall allow operators 
+    to configure a shared watchlist of domains and shall raise an alert whenever 
+    a certificate covering a watched domain is observed in any monitored log.
+\end{itemize}
 
 \subsection{System Features}
 
+\subsubsection{Broker Daemon}
+AutoCTM shall run a persistent broker daemon that acts as the backbone of 
+the system. The broker shall:
+\begin{itemize}
+    \item Own and maintain a Unix domain socket at a well-known path, used 
+    for all CLI-to-broker and broker-to-instance communication.
+    \item Maintain an instance registry tracking each instance's ID, PID, 
+    and current status.
+    \item Persist the instance registry to the database so that it survives 
+    a broker restart.
+    \item On restart, reload the instance registry and attempt to reconnect 
+    to any instances whose process is still active.
+    \item Spawn new monitor instance processes on operator request.
+    \item Route commands from the CLI to the appropriate instance.
+    \item Start automatically when the CLI is launched and no broker is found.
+\end{itemize}
+
+\subsubsection{CLI Interface}
+AutoCTM shall provide a command-line interface for operator control. The CLI 
+shall:
+\begin{itemize}
+    \item On launch, connect to the broker socket. If no broker is found, 
+    automatically spawn one before presenting the command prompt.
+    \item Operate in one of two contexts: \textit{global context} (no instance 
+    selected) and \textit{instance context} (an active instance is selected 
+    via \texttt{/set-instance}).
+    \item Support the following commands in global context:
+    \begin{itemize}
+        \item \texttt{/start} --- Spawn a new monitor instance.
+        \item \texttt{/get-instances} --- List all instances and their status.
+        \item \texttt{/set-instance <instanceID>} --- Set the active instance. 
+        Subsequent commands are routed to this instance.
+        \item \texttt{/add <domain>} --- Add a domain to the shared watchlist.
+        \item \texttt{/remove <domain>} --- Remove a domain from the shared 
+        watchlist.
+        \item \texttt{/shutdown} --- Gracefully shut down all instances and 
+        the broker.
+    \end{itemize}
+    \item Support the following commands in instance context:
+    \begin{itemize}
+        \item \texttt{/add-log <url>} --- Add a CT log to the instance.
+        \item \texttt{/remove-log <url>} --- Remove a CT log from the instance.
+        \item \texttt{/pause} --- Pause the instance's polling loop.
+        \item \texttt{/resume} --- Resume a paused instance.
+        \item \texttt{/status} --- Display the instance's current status.
+        \item \texttt{/shutdown} --- Shut down the active instance only.
+        \item \texttt{/clear-instance} --- Return to global context.
+    \end{itemize}
+    \item May be closed at any time. Running instances and the broker shall 
+    be unaffected. On relaunch the CLI shall reconnect to the existing broker.
+\end{itemize}
+
 \subsubsection{CT Log Monitoring}
-AutoCTM shall monitor one or more RFC 9162-compliant CT logs. The system shall:
+Each AutoCTM monitor instance shall monitor one or more RFC 9162-compliant 
+CT logs. The instance shall:
 \begin{itemize}
     \item Poll each configured log for a new STH on a configurable interval.
     \item Verify the STH signature before processing any entries.
     \item Fetch all new entries since the last known STH.
     \item Verify Merkle consistency proofs between successive STHs.
-    \item Support monitoring of multiple logs concurrently.
+    \item Support monitoring of multiple logs concurrently via independent 
+    goroutines.
+    \item Detect and report log misbehaviour including MMD violations, 
+    unavailable entries, and consistency proof failures.
 \end{itemize}
 
 \subsubsection{Certificate Storage}
-AutoCTM shall persist all observed certificate entries to a local database. 
-The system shall:
+AutoCTM shall persist all observed certificate entries to a shared PostgreSQL 
+database. The system shall:
 \begin{itemize}
     \item Store the leaf hash, log ID, timestamp, subject, SANs, issuer, 
-    and expiry for each observed certificate.
-    \item Prevent duplicate entries for the same leaf hash across logs.
+    serial number, and expiry for each observed certificate.
+    \item Prevent duplicate entries for the same leaf hash.
     \item Support querying stored certificates by domain, issuer, and 
     date range.
 \end{itemize}
@@ -82,14 +175,14 @@ Lists (CRLs). The system shall:
 \end{itemize}
 
 \subsubsection{Domain Watchlist Alerting}
-AutoCTM shall allow operators to configure a watchlist of domains to 
+AutoCTM shall allow operators to configure a shared watchlist of domains to 
 monitor for unexpected certificate issuance. The system shall:
 \begin{itemize}
     \item Match observed certificates against the watchlist by exact domain 
     and wildcard SAN.
     \item Raise an alert for any certificate covering a watched domain.
-    \item Support adding and removing watchlist entries without restarting 
-    the service.
+    \item Allow watchlist entries to be added and removed via the CLI without 
+    restarting any instance or the broker.
 \end{itemize}
 
 \subsubsection{Log Integrity Auditing}
@@ -101,17 +194,8 @@ in RFC 9162. The system shall:
     \item Report entries that remain unavailable for an extended period 
     after appearing in an STH.
     \item Record and report any consistency proof verification failure.
-\end{itemize}
-
-\subsubsection{Configuration Management}
-AutoCTM shall allow operators to manage the system configuration at runtime. 
-The system shall:
-\begin{itemize}
-    \item Support adding and removing monitored logs without restarting 
-    the service.
-    \item Validate log configuration against required RFC 9162 parameters 
-    (base URL, public key, MMD) on load.
-    \item Store configuration in a human-readable file format.
+    \item Pause polling of a log on consistency proof failure pending 
+    operator review.
 \end{itemize}
 
 \subsubsection{Alert Notification}
@@ -125,10 +209,6 @@ channels. The system shall:
     \item Avoid duplicate alerts for the same certificate and alert type.
 \end{itemize}
 
-
-
 \subsection{Non-Functional Requirements}
-
-
 
 \end{document}
