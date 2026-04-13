@@ -1,0 +1,325 @@
+\documentclass{article}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{AutoCTM Software Design Specification}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+\subsection{Purpose}
+This document describes the software design of AutoCTM, a Certificate
+Transparency monitor written in Go. It is intended to guide implementation
+and serve as a reference for the development team.
+
+\subsection{Scope}
+AutoCTM allows operators to monitor one or more RFC 9162-compliant CT logs
+for certificate issuance against a configurable domain watchlist. The system
+consists of three decoupled components: a CLI, a persistent broker daemon,
+and one or more independent monitor instances. The CLI may be closed at any
+time without affecting running instances. On relaunch the CLI reconnects to
+the broker and resumes control.
+
+\subsection{Definitions}
+\begin{itemize}
+    \item \textbf{CLI} --- The operator-facing command-line interface. A
+    short-lived process that connects to the broker, issues commands, and
+    may be closed freely.
+    \item \textbf{Broker} --- A persistent background daemon that owns the
+    control socket, manages the instance registry, and routes commands from
+    the CLI to the appropriate instance.
+    \item \textbf{Instance} --- A long-running background process responsible
+    for monitoring one or more CT logs, checking certificates, and raising
+    alerts.
+    \item \textbf{Active Instance} --- The instance currently selected in the
+    CLI via \texttt{/set-instance}. Commands issued in instance context are
+    routed to this instance.
+    \item \textbf{STH} --- Signed Tree Head, as defined in RFC 9162.
+    \item \textbf{SCT} --- Signed Certificate Timestamp, as defined in RFC 9162.
+    \item \textbf{MMD} --- Maximum Merge Delay, as defined in RFC 9162.
+    \item \textbf{Watchlist} --- The set of domains configured by the operator
+    for alert monitoring.
+\end{itemize}
+
+\subsection{References}
+\begin{itemize}
+    \item RFC 9162 --- Certificate Transparency Version 2.0
+    \item AutoCTM Software Requirements Specification
+\end{itemize}
+
+\section{System Overview}
+
+AutoCTM is composed of three decoupled processes:
+
+\begin{itemize}
+    \item \textbf{CLI} (\texttt{autoctm}) --- The operator entry point. On
+    launch it checks for a running broker. If none is found it spawns one
+    automatically before presenting the command prompt. The CLI may be closed
+    at any time; running instances are unaffected.
+    \item \textbf{Broker} (\texttt{autoctm-broker}) --- A persistent daemon
+    that starts automatically on first CLI launch. It owns a Unix socket at a
+    known path, maintains the instance registry, and routes commands between
+    the CLI and instances. It remains alive independently of both the CLI and
+    any instance.
+    \item \textbf{Monitor Instance} (\texttt{autoctm-instance}) --- A
+    long-running background process spawned by the broker on \texttt{/start}.
+    Each instance independently polls its configured CT logs, processes
+    entries, performs watchlist and CRL checks, and raises alerts. Multiple
+    instances may run concurrently.
+\end{itemize}
+
+
+\section{Architecture}
+
+\subsection{Component Diagram}
+% Insert component diagram here
+
+\subsection{Process Lifecycle}
+
+\subsubsection{Broker Startup}
+\begin{enumerate}
+    \item CLI launches and checks for a broker socket at the well-known path
+    (e.g. \texttt{/var/run/autoctm/broker.sock}).
+    \item If no socket is found, the CLI forks and execs \texttt{autoctm-broker}
+    as a detached background process, then waits for the socket to appear.
+    \item The broker creates the socket, loads the instance registry from the
+    database, and begins listening for CLI and instance connections.
+\end{enumerate}
+
+\subsubsection{CLI Lifecycle}
+\begin{enumerate}
+    \item On launch, the CLI connects to the broker socket.
+    \item The CLI enters a REPL, accepting operator commands and forwarding
+    them to the broker.
+    \item The CLI maintains an \textit{active instance} context, initially
+    unset (global context).
+    \item The CLI may be closed at any time with no effect on the broker or
+    any running instance. On relaunch it reconnects to the existing broker.
+\end{enumerate}
+
+\subsubsection{Instance Lifecycle}
+\begin{enumerate}
+    \item The broker spawns a new instance process on receipt of \texttt{/start}.
+    \item The instance registers itself with the broker, providing its PID and
+    a unique instance ID (UUID).
+    \item The instance loads its configuration from the database and begins
+    its polling loop.
+    \item On \texttt{/shutdown} (targeted or global), the broker signals the
+    instance to drain its current work and exit cleanly.
+    \item The instance deregisters from the broker on exit.
+\end{enumerate}
+
+\subsection{Inter-Process Communication}
+All IPC uses a Unix domain socket owned by the broker at a well-known path.
+Messages are encoded as newline-delimited JSON. There are two connection types:
+
+\begin{itemize}
+    \item \textbf{CLI $\rightarrow$ Broker} --- The CLI holds a persistent
+    connection to the broker for the duration of its session.
+    \item \textbf{Broker $\rightarrow$ Instance} --- The broker holds a
+    persistent connection to each registered instance, used to forward
+    commands and receive status updates.
+\end{itemize}
+
+% ─────────────────────────────────────────────
+\section{Component Design}
+
+\subsection{CLI}
+
+\subsubsection{Command Contexts}
+The CLI operates in one of two contexts at any time:
+
+\paragraph{Global Context}
+No active instance is selected. Commands affect shared state or the broker:
+\begin{itemize}
+    \item \texttt{/start} --- Instruct the broker to spawn a new monitor
+    instance. Prints the assigned instance ID.
+    \item \texttt{/get-instances} --- List all registered instances, their
+    IDs, and current status.
+    \item \texttt{/set-instance <instanceID>} --- Set the active instance.
+    The CLI prompt updates to reflect the selected instance. Subsequent
+    commands are routed to that instance.
+    \item \texttt{/add <domain>} --- Add a domain to the shared watchlist.
+    \item \texttt{/remove <domain>} --- Remove a domain from the shared
+    watchlist.
+    \item \texttt{/shutdown} --- Gracefully shut down all instances and the
+    broker. The CLI then exits.
+\end{itemize}
+
+\paragraph{Instance Context}
+An active instance is selected via \texttt{/set-instance}. Commands are
+routed to that instance:
+\begin{itemize}
+    \item \texttt{/add-log <url>} --- Add a CT log to the instance's
+    configuration.
+    \item \texttt{/remove-log <url>} --- Remove a CT log from the instance's
+    configuration.
+    \item \texttt{/pause} --- Pause the instance's polling loop.
+    \item \texttt{/resume} --- Resume a paused instance.
+    \item \texttt{/status} --- Print the instance's current status, including
+    configured logs, last known STH per log, and alert counts.
+    \item \texttt{/shutdown} --- Shut down the active instance only.
+    \item \texttt{/clear-instance} --- Return to global context.
+\end{itemize}
+
+\subsubsection{Auto-Spawn Behaviour}
+If the CLI cannot connect to the broker socket on launch it shall
+automatically spawn the broker as a detached background process before
+presenting the prompt. This requires no manual daemon management from the
+operator.
+
+\subsection{Broker}
+
+\subsubsection{Responsibilities}
+\begin{itemize}
+    \item Own and maintain the Unix control socket.
+    \item Maintain the instance registry (running instances, their IDs, PIDs,
+    and socket connections).
+    \item Route CLI commands to the correct instance.
+    \item Spawn new instance processes on \texttt{/start}.
+    \item Persist instance registry state to the database so it survives a
+    broker restart.
+\end{itemize}
+
+\subsubsection{Broker Restart Behaviour}
+If the broker is restarted (e.g. after a system reboot), it shall reload the
+instance registry from the database and attempt to reconnect to any instances
+whose PID is still active. Instances that are no longer running shall be
+marked as stopped.
+
+\subsection{Monitor Instance}
+
+\subsubsection{Startup Sequence}
+\begin{enumerate}
+    \item Receive configuration from the broker (instance ID, initial log
+    list if any).
+    \item Connect to PostgreSQL and verify schema.
+    \item Register with the broker via the control socket.
+    \item Spawn one goroutine per configured log.
+    \item Enter polling loop.
+\end{enumerate}
+
+\subsubsection{Polling Loop}
+Each log goroutine shall independently perform the following steps:
+\begin{enumerate}
+    \item Fetch the current STH via \texttt{GET /ct/v2/get-sth}.
+    \item Verify the STH signature using the log's public key.
+    \item If the STH is unchanged from the stored STH, wait for the
+    configured poll interval and retry.
+    \item Fetch new entries since the last known STH via
+    \texttt{GET /ct/v2/get-entries}.
+    \item For each entry, perform watchlist and CRL checks.
+    \item Verify the Merkle consistency proof between the previous and new
+    STH via \texttt{GET /ct/v2/get-sth-consistency}.
+    \item Persist new entries and update the stored STH in the database.
+    \item Dispatch any pending alerts.
+    \item Wait for the configured poll interval and return to step 1.
+\end{enumerate}
+
+\subsubsection{Watchlist Checking}
+Each certificate's Subject CN and SAN fields are matched against all domains
+in the watchlist. Matching shall support:
+\begin{itemize}
+    \item Exact domain match (e.g. \texttt{example.com}).
+    \item Wildcard SAN match (e.g. \texttt{*.example.com}).
+\end{itemize}
+A match shall produce an alert record of type \texttt{watchlist\_match}.
+
+\subsubsection{CRL Checking}
+The instance shall maintain a local in-memory cache of CRLs keyed by issuer
+DN. CRLs shall be refreshed on a configurable interval. Each observed
+certificate serial number shall be checked against the cached CRL for its
+issuer. A hit shall produce an alert record of type \texttt{revoked}.
+
+
+\section{Data Design}
+\label{sec:data}
+
+\subsection{Database}
+AutoCTM uses a local PostgreSQL instance as its storage backend. The database
+is shared across the broker and all monitor instances.
+
+\subsection{Schema}
+
+\subsubsection{certificates}
+Stores all observed certificate entries.
+\begin{itemize}
+    \item \texttt{id} --- Primary key (UUID).
+    \item \texttt{leaf\_hash} --- SHA-256 leaf hash (unique).
+    \item \texttt{log\_id} --- OID of the source log.
+    \item \texttt{observed\_at} --- Timestamp of observation.
+    \item \texttt{not\_before}, \texttt{not\_after} --- Certificate validity
+    period.
+    \item \texttt{subject} --- Certificate subject CN.
+    \item \texttt{sans} --- Array of Subject Alternative Names.
+    \item \texttt{issuer} --- Issuer DN.
+    \item \texttt{serial} --- Certificate serial number.
+    \item \texttt{revoked} --- Boolean, updated by CRL checks.
+\end{itemize}
+
+\subsubsection{watchlist}
+\begin{itemize}
+    \item \texttt{id} --- Primary key (UUID).
+    \item \texttt{domain} --- Domain pattern (exact or wildcard).
+    \item \texttt{added\_at} --- Timestamp of addition.
+\end{itemize}
+
+\subsubsection{instances}
+\begin{itemize}
+    \item \texttt{id} --- Instance ID (UUID).
+    \item \texttt{pid} --- OS process ID.
+    \item \texttt{status} --- Current status (\texttt{running},
+    \texttt{paused}, \texttt{stopped}).
+    \item \texttt{started\_at} --- Timestamp.
+    \item \texttt{config} --- JSONB blob of instance configuration (log URLs, public keys, poll interval).
+\end{itemize}
+
+\subsubsection{sth\_state}
+Tracks the last known STH per log per instance.
+\begin{itemize}
+    \item \texttt{instance\_id} --- Foreign key to \texttt{instances}.
+    \item \texttt{log\_id} --- OID of the log.
+    \item \texttt{tree\_size} --- Tree size of the last known STH.
+    \item \texttt{root\_hash} --- Root hash of the last known STH.
+    \item \texttt{timestamp} --- STH timestamp.
+\end{itemize}
+
+\subsubsection{alerts}
+\begin{itemize}
+    \item \texttt{id} --- Primary key (UUID).
+    \item \texttt{certificate\_id} --- Foreign key to \texttt{certificates}.
+    \item \texttt{instance\_id} --- Foreign key to \texttt{instances}.
+    \item \texttt{reason} --- Alert reason (\texttt{watchlist\_match},
+    \texttt{revoked}, \texttt{log\_misbehaviour}).
+    \item \texttt{detail} --- JSONB blob of alert-specific detail.
+    \item \texttt{raised\_at} --- Timestamp.
+    \item \texttt{dispatched} --- Boolean, whether the notification was sent.
+\end{itemize}
+
+\section{Error Handling}
+
+\subsection{Log Unavailability}
+If a CT log is unreachable the instance shall log the failure and back off using exponential retry. If the log remains unavailable beyond the MMD the instance shall raise a \texttt{log\_misbehaviour} alert.
+
+\subsection{Consistency Proof Failure}
+A consistency proof verification failure shall be treated as log misbehaviour. The instance shall record the failure, raise an alert, and pause polling of the affected log pending operator review via
+\texttt{/resume}.
+
+\subsection{Database Connectivity}
+If the database becomes unreachable the instance shall pause processing and retry on a backoff schedule. On recovery the instance shall resume from the last persisted STH state, re-fetching any entries missed during the outage.
+
+\subsection{Broker Unavailability}
+If the CLI cannot reach the broker it shall attempt to auto-spawn a newbroker instance. If the broker cannot be spawned the CLI shall print a diagnostic error and exit.
+
+\subsection{Instance Crash}
+If an instance exits unexpectedly the broker shall detect the lost connection, mark the instance as \texttt{stopped} in the database, and notify the operator on the next CLI connection.
+
+
+\end{document}
