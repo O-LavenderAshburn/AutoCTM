@@ -1,33 +1,59 @@
 package cli
 
-//Instruct the broker to spawn a new monitor instance. Prints the assigned instance ID.
-func Start(){
+import (
+	"fmt"
+	"time"
+)
 
+// Instruct the system to spawn a new monitor instance.
+// (Later: this should call broker instead of store)
+func (c *CLI) Start() error {
+	id, err := c.broker.StartInstance()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Started instance:", id)
+	return nil
 }
 
-//List all registered instances, their IDs, and current status.
-func GetInstances(){
+// List all registered instances, their IDs, and current status.
+func (c *CLI) ListInstances() error {
+	instances, err := c.store.List()
+	if err != nil {
+		return err
+	}
 
-}
-//Set the active instance. The CLI prompt updates to reflect theselected instance. Subsequent 
-// commands are routed to that instance.
-func SetInstance(){
+	for _, inst := range instances {
+		fmt.Printf(
+			"ID: %s | Status: %s | PID: %d\n",
+			inst.ID,
+			inst.Status,
+			inst.PID,
+		)
+	}
 
-}
-
-//Add a domain to the shared or current watchlist.
-func AddGlobal(){
-
-}
-
-//Remove a domain from the shared watchlist.
-func RemoveGlobal(){
-
-}
-
-//Gracefully shut down all instances and the broker. The CLI then exits.
-func ShutdownGlobal(){
-
+	return nil
 }
 
 
+// Set the active instance context for the CLI.
+// Future commands will target this instance.
+func (c *CLI) SetContext(instanceID string) (*InstanceContext, error) {
+
+	inst, err := c.store.GetByID(instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	c.context = &InstanceContext{
+		ID:        inst.ID,
+		Status:    inst.Status,
+		StartedAt: inst.StartedAt,
+		Active:    true,
+	}
+
+	fmt.Println("Active instance:", inst.ID)
+
+	return c.context, nil
+}
