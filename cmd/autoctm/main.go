@@ -3,8 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-
-	"sorcerer.nz/internal/cli"
+	"sorcerer.nz/autoctm/internal/cli"
 )
 
 func main() {

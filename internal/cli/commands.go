@@ -19,7 +19,7 @@ func (c *CLI) Start() error {
 
 // List all registered instances, their IDs, and current status.
 func (c *CLI) ListInstances() error {
-	instances, err := c.store.List()
+	instances, err := c.broker.ListInstances()
 	if err != nil {
 		return err
 	}
@@ -40,8 +40,7 @@ func (c *CLI) ListInstances() error {
 // Set the active instance context for the CLI.
 // Future commands will target this instance.
 func (c *CLI) SetContext(instanceID string) (*InstanceContext, error) {
-
-	inst, err := c.store.GetByID(instanceID)
+	inst, err := c.broker.GetInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +53,11 @@ func (c *CLI) SetContext(instanceID string) (*InstanceContext, error) {
 	}
 
 	fmt.Println("Active instance:", inst.ID)
-
 	return c.context, nil
 }
+
+func (c *CLI) ExitContext() {
+	c.context = nil
+	fmt.Println("Returned to global context")
+}
+

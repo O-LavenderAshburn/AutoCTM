@@ -1,14 +1,13 @@
 package cli
 
-import "sorcerer.nz/internal/broker"
+import (
+	"fmt"
+	"time"
 
-type CLI struct {
-	store   InstanceStore
-	broker  Broker
-	context *InstanceContext
-}
+	"sorcerer.nz/autoctm/internal/broker"
+	"sorcerer.nz/autoctm/internal/instance"
+)
 
-// Active instance snapshot used by CLI routing
 type InstanceContext struct {
 	ID        string
 	Status    string
@@ -16,27 +15,24 @@ type InstanceContext struct {
 	Active    bool
 }
 
-type InstanceStore interface {
-	GetByID(id string) (*instance.Instance, error)
-	List() ([]*instance.Instance, error)
+type CLI struct {
+	broker  broker.Broker
+	context *InstanceContext
 }
 
-type Broker interface {
-	StartInstance() (string, error)
-	AddLog(instanceID, url string) error
-	RemoveLog(instanceID, url string) error
-	Pause(instanceID string) error
-	Resume(instanceID string) error
-	Status(instanceID string) (*instance.Instance, error)
-	Shutdown(instanceID string) error
+func (c *CLI) Start() error {
+	id, err := c.broker.StartInstance()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Started instance:", id)
+	return nil
 }
 
 
-func New(store InstanceStore, broker Broker) *CLI {
+func New(b broker.Broker) *CLI {
 	return &CLI{
-		store:  store,
-		broker: broker,
+		broker: b,
 	}
 }
-
-

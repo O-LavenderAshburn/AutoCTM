@@ -1,9 +1,13 @@
 package cli
 
-import("fmt")
+import (
+	"fmt"
 
-// AddLog adds a CT log to the instance’s configuration.
-// The broker persists the log and notifies the instance to reload config.
+	"sorcerer.nz/autoctm/internal/broker"
+)
+
+// AddLog adds a CT log to the active instance.
+// The broker persists the log and updates the instance config.
 func (c *CLI) AddLog(url string) error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
@@ -12,9 +16,7 @@ func (c *CLI) AddLog(url string) error {
 	return c.broker.AddLog(c.context.ID, url)
 }
 
-
-// RemoveLog removes a CT log from the instance’s configuration.
-// The broker updates the database and notifies the instance to reload config.
+// RemoveLog removes a CT log from the active instance.
 func (c *CLI) RemoveLog(url string) error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
@@ -23,7 +25,7 @@ func (c *CLI) RemoveLog(url string) error {
 	return c.broker.RemoveLog(c.context.ID, url)
 }
 
-//Pause the instance’s polling loop.
+// Pause stops the active instance’s polling loop.
 func (c *CLI) Pause() error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
@@ -32,7 +34,7 @@ func (c *CLI) Pause() error {
 	return c.broker.Pause(c.context.ID)
 }
 
-//Resume a paused instance.
+// Resume restarts a paused instance.
 func (c *CLI) Resume() error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
@@ -41,39 +43,42 @@ func (c *CLI) Resume() error {
 	return c.broker.Resume(c.context.ID)
 }
 
-//Print the instance’s current status, including configured logs, last known 
-//STH per log, and alert counts
+// Status prints the current state of the active instance.
 func (c *CLI) Status() error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
 	}
 
-	inst, err := c.broker.Status(c.context.ID)
+	inst, err := c.broker.GetInstance(c.context.ID)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Instance: %s | Status: %s\n", inst.ID, inst.Status)
+	fmt.Printf(
+		"Instance: %s | Status: %s | PID: %d\n",
+		inst.ID,
+		inst.Status,
+		inst.PID,
+	)
+
 	return nil
 }
 
-//Shutdown the active instance only.
+// Shutdown stops the active instance.
 func (c *CLI) Shutdown() error {
 	if c.context == nil {
 		return fmt.Errorf("no active instance selected")
 	}
 
-	err := c.broker.Shutdown(c.context.ID)
+	err := c.broker.StopInstance(c.context.ID)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("Instance shutdown:", c.context.ID)
+
+	// optional: clear context after shutdown
+	c.context = nil
+
 	return nil
 }
-
-
-
-
-
-
