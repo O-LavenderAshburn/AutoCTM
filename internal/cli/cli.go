@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"sorcerer.nz/autoctm/internal/broker"
-	"sorcerer.nz/autoctm/internal/instance"
+	// "sorcerer.nz/autoctm/internal/instance"
 )
 
 type InstanceContext struct {

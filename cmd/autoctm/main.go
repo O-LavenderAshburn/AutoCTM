@@ -3,22 +3,20 @@ package main
 import (
 	"flag"
 	"fmt"
+	"sorcerer.nz/autoctm/internal/broker"
 	"sorcerer.nz/autoctm/internal/cli"
 )
 
 func main() {
-
 	initFlag := flag.Bool("init", false, "Initialize first instance")
 	flag.Parse()
 
 	// TODO: initialize store + broker implementations
-	store := initStore()
-	broker := initBroker()
+	b := broker.New()
 
-	c := cli.New(store, broker)
+	c := cli.New(b)
 	runner := cli.NewRunner(c)
 
-	// Handle init flag (bootstrap only)
 	if *initFlag {
 		fmt.Println("Initializing first instance...")
 
@@ -26,22 +24,7 @@ func main() {
 		// - check DB for existing instances
 		// - if none exist, create default instance via broker
 		// - set context automatically
-
-		id, err := broker.StartInstance()
-		if err != nil {
-			fmt.Println("failed to initialize instance:", err)
-			return
-		}
-
-		_, err = c.SetContext(id)
-		if err != nil {
-			fmt.Println("failed to set context:", err)
-			return
-		}
 	}
 
-	// Start CLI loop 
 	runner.Run()
-
-	
 }

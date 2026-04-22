@@ -2,22 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"time"
 )
 
-// Instruct the system to spawn a new monitor instance.
-// (Later: this should call broker instead of store)
-func (c *CLI) Start() error {
-	id, err := c.broker.StartInstance()
-	if err != nil {
-		return err
-	}
 
-	fmt.Println("Started instance:", id)
-	return nil
-}
 
 // List all registered instances, their IDs, and current status.
+//TODO: Fix in Specs document
 func (c *CLI) ListInstances() error {
 	instances, err := c.broker.ListInstances()
 	if err != nil {
@@ -39,10 +29,10 @@ func (c *CLI) ListInstances() error {
 
 // Set the active instance context for the CLI.
 // Future commands will target this instance.
-func (c *CLI) SetContext(instanceID string) (*InstanceContext, error) {
+func (c *CLI) SetContext(instanceID string) {
 	inst, err := c.broker.GetInstance(instanceID)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	c.context = &InstanceContext{
@@ -53,7 +43,6 @@ func (c *CLI) SetContext(instanceID string) (*InstanceContext, error) {
 	}
 
 	fmt.Println("Active instance:", inst.ID)
-	return c.context, nil
 }
 
 func (c *CLI) ExitContext() {

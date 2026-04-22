@@ -12,3 +12,7 @@ type Broker interface {
 	ListInstances() ([]*instance.Instance, error)
 	GetInstance(id string) (*instance.Instance, error)
 }
+
+func New() Broker {
+	return nil
+}

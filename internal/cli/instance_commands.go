@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"sorcerer.nz/autoctm/internal/broker"
 )
 
 // AddLog adds a CT log to the active instance.

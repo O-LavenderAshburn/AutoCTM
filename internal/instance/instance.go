@@ -1,3 +1,8 @@
+package instance
+
+import ("time"
+        "encoding/json")
+        
 type Instance struct {
     ID        string
     PID       int
