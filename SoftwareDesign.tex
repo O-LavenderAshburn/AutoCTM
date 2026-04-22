@@ -202,9 +202,8 @@ No active instance is selected. Commands affect shared state or the broker:
     \item \texttt{/set-instance <instanceID>} --- Set the active instance.
     The CLI prompt updates to reflect the selected instance. Subsequent
     commands are routed to that instance.
-    \item \texttt{/add <domain>} --- Add a domain to the shared watchlist.
-    \item \texttt{/remove <domain>} --- Remove a domain from the shared
-    watchlist.
+    \item \texttt{/add <domain>} --- Add a domain to the shared or current instance watchlist.
+    \item \texttt{/remove <domain>} --- Remove a domain from the shared current instance watchlist.
     \item \texttt{/shutdown} --- Gracefully shut down all instances and the
     broker. The CLI then exits.
 \end{itemize}
@@ -344,6 +343,7 @@ Stores instance identity, status, and configuration. This is the source of
 truth for instance configuration --- instances load directly from this table
 on startup.
 \begin{itemize}
+    \item \texttt{id} --- Name.
     \item \texttt{id} --- Instance ID (UUID).
     \item \texttt{pid} --- OS process ID.
     \item \texttt{status} --- Current status (\texttt{running},
