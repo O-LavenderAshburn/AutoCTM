@@ -16,7 +16,7 @@ func main() {
 
 	c := cli.New(b)
 	runner := cli.NewRunner(c)
-
+	
 	if *initFlag {
 		fmt.Println("Initializing first instance...")
 
@@ -25,6 +25,6 @@ func main() {
 		// - if none exist, create default instance via broker
 		// - set context automatically
 	}
-
+	fmt.Println("starting runner")
 	runner.Run()
 }

@@ -1,6 +1,10 @@
 package broker
 
-import "sorcerer.nz/autoctm/internal/instance"
+import (
+	"fmt"
+
+	"sorcerer.nz/autoctm/internal/instance"
+)
 
 type Broker interface {
 	StartInstance() (string, error)
@@ -13,6 +17,42 @@ type Broker interface {
 	GetInstance(id string) (*instance.Instance, error)
 }
 
+type simpleBroker struct{}
+
 func New() Broker {
+	return &simpleBroker{}
+}
+
+//TODO Implement stubs later when cli is finished
+func (b *simpleBroker) StartInstance() (string, error) {
+	fmt.Println("[broker] StartInstance called")
+	return "inst-1", nil
+}
+
+func (b *simpleBroker) StopInstance(id string) error {
 	return nil
+}
+
+func (b *simpleBroker) Pause(id string) error {
+	return nil
+}
+
+func (b *simpleBroker) Resume(id string) error {
+	return nil
+}
+
+func (b *simpleBroker) AddLog(instanceID, url string) error {
+	return nil
+}
+
+func (b *simpleBroker) RemoveLog(instanceID, url string) error {
+	return nil
+}
+
+func (b *simpleBroker) ListInstances() ([]*instance.Instance, error) {
+	return nil, nil
+}
+
+func (b *simpleBroker) GetInstance(id string) (*instance.Instance, error) {
+	return nil, nil
 }
