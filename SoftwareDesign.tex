@@ -193,37 +193,39 @@ connection types:
 The CLI operates in one of two contexts at any time:
 
 \paragraph{Global Context}
-No active instance is selected. Commands affect shared state or the broker:
+When no active instance is selected, the CLI may execute system-level or
+read-only broker commands:
+
 \begin{itemize}
     \item \texttt{/start} --- Instruct the broker to spawn a new monitor
-    instance. Prints the assigned instance ID.
-    \item \texttt{/get-instances} --- List all registered instances, their
-    IDs, and current status.
-    \item \texttt{/set-instance <instanceID>} --- Set the active instance.
-    The CLI prompt updates to reflect the selected instance. Subsequent
-    commands are routed to that instance.
-    \item \texttt{/add <domain>} --- Add a domain to the shared watchlist.
-    \item \texttt{/remove <domain>} --- Remove a domain from the shared
-    watchlist.
-    \item \texttt{/shutdown} --- Gracefully shut down all instances and the
-    broker. The CLI then exits.
+    instance. The broker persists the instance in the database and returns
+    the instance ID.
+    \item \texttt{/get-instances} --- List all registered instances and
+    their status.
+    \item \texttt{/set-instance <instanceID>} --- Select an active instance
+    for subsequent commands.
+    \item \texttt{/exit} --- Return to global context.
 \end{itemize}
 
+These operations are no longer CLI-responsible and are instead handled
+through broker-routed instance or database workflows.
+
 \paragraph{Instance Context}
-An active instance is selected via \texttt{/set-instance}. Commands are
-routed to that instance:
+An active instance is selected via \texttt{/set-instance}. All instance-scoped
+commands are routed through the broker.
+
 \begin{itemize}
-    \item \texttt{/add-log <url>} --- Add a CT log to the instance's
-    configuration. The broker writes the new log to the database and
-    notifies the instance to reload its configuration.
-    \item \texttt{/remove-log <url>} --- Remove a CT log from the instance's
-    configuration.
-    \item \texttt{/pause} --- Pause the instance's polling loop.
-    \item \texttt{/resume} --- Resume a paused instance.
-    \item \texttt{/status} --- Print the instance's current status, including
-    configured logs, last known STH per log, and alert counts.
-    \item \texttt{/shutdown} --- Shut down the active instance only.
-    \item \texttt{/clear-instance} --- Return to global context.
+    \item \texttt{/add-log <url>} --- Request broker to update instance
+    configuration and notify the instance to reload.
+    \item \texttt{/remove-log <url>} --- Remove CT log from instance
+    configuration via broker update.
+    \item \texttt{/pause} --- Broker signals instance to pause polling.
+    \item \texttt{/resume} --- Broker signals instance to resume polling.
+    \item \texttt{/status} --- Broker returns current instance status,
+    including logs, last STH, and alert counts.
+    \item \texttt{/shutdown} --- Shut down the selected instance only via broker.
+    instance only.
+    \item \texttt{/clear-instance} --- Return CLI to global context.
 \end{itemize}
 
 \subsubsection{Auto-Spawn Behaviour}
@@ -291,6 +293,14 @@ Each log goroutine shall independently perform the following steps:
     \item Wait for the configured poll interval and return to step 1.
 \end{enumerate}
 
+\subsubsection{System Shutdown}
+
+System-wide shutdown is no longer initiated from CLI commands directly.
+
+Instead, shutdown behavior is delegated to the broker, which is responsible
+for coordinating termination of all instances and itself upon receiving a
+broker-level shutdown signal (external signal or administrative action).
+
 \subsubsection{Watchlist Checking}
 Each certificate's Subject CN and SAN fields are matched against all domains
 in the watchlist. Matching shall support:
@@ -344,6 +354,7 @@ Stores instance identity, status, and configuration. This is the source of
 truth for instance configuration --- instances load directly from this table
 on startup.
 \begin{itemize}
+    \item \texttt{id} --- Name.
     \item \texttt{id} --- Instance ID (UUID).
     \item \texttt{pid} --- OS process ID.
     \item \texttt{status} --- Current status (\texttt{running},
