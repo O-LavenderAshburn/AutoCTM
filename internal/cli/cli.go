@@ -3,9 +3,8 @@ package cli
 import (
 	"fmt"
 	"time"
-
+	"net"
 	"sorcerer.nz/autoctm/internal/broker"
-	// "sorcerer.nz/autoctm/internal/instance"
 )
 
 type InstanceContext struct {
@@ -16,8 +15,8 @@ type InstanceContext struct {
 }
 
 type CLI struct {
-	broker  broker.Broker
-	context *InstanceContext
+    conn    net.Conn
+    context *InstanceContext
 }
 
 func (c *CLI) Start() error {
@@ -31,8 +30,8 @@ func (c *CLI) Start() error {
 }
 
 
-func New(b broker.Broker) *CLI {
-	return &CLI{
-		broker: b,
-	}
+func New(conn net.Conn) *CLI {
+    return &CLI{
+        conn: conn,
+    }
 }
