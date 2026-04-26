@@ -8,7 +8,8 @@ import (
 )
 
 type CLIRunner struct {
-	cli *CLI
+    cli      *CLI
+    quitFunc func()
 }
 
 func NewRunner(cli *CLI) *CLIRunner {
@@ -35,6 +36,12 @@ func (r *CLIRunner) handle(input string) {
 		if err != nil {
 			fmt.Println("error:", err)
 		}
+	case"quit":
+		fmt.Println("bye")
+		return
+
+	default:
+		fmt.Printf("unknown command: %s\n", parts[0])
 
 	}
 
@@ -44,7 +51,6 @@ func (r *CLIRunner) Run() {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("error reading input:", err)
@@ -54,11 +60,6 @@ func (r *CLIRunner) Run() {
 		input = strings.TrimSpace(input)
 		if input == "" {
 			continue
-		}
-
-		if input == "quit" {
-			fmt.Println("bye")
-			return
 		}
 
 		r.handle(input)

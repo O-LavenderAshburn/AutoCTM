@@ -1,17 +1,14 @@
-package cli_test
+package cli
 
 import (
 	"fmt"
 	"testing"
 
-	"sorcerer.nz/autoctm/internal/cli"
 	"sorcerer.nz/autoctm/internal/instance"
 )
-
-// test start
 func TestStart_Success(t *testing.T) {
 	mock := &mockBroker{startID: "inst-1"}
-	c := cli.New(mock)
+	c := New(mock)
 
 	err := c.Start()
 
@@ -23,10 +20,9 @@ func TestStart_Success(t *testing.T) {
 	}
 }
 
-// BrokerError cases verify that CLI surfaces errors rather than swallowing them
 func TestStart_BrokerError(t *testing.T) {
 	mock := &mockBroker{startErr: fmt.Errorf("broker failed")}
-	c := cli.New(mock)
+	c := New(mock)
 
 	err := c.Start()
 
@@ -35,16 +31,13 @@ func TestStart_BrokerError(t *testing.T) {
 	}
 }
 
-
-// ListInstances tests verify that CLI.ListInstances correctly delegates
-// to the broker and surfaces any errors returned.
 func TestListInstances_Success(t *testing.T) {
 	mock := &mockBroker{
 		listInstances: []*instance.Instance{
 			{ID: "inst-1"},
 		},
 	}
-	c := cli.New(mock)
+	c := New(mock)
 
 	err := c.ListInstances()
 
@@ -58,7 +51,7 @@ func TestListInstances_Success(t *testing.T) {
 
 func TestListInstances_BrokerError(t *testing.T) {
 	mock := &mockBroker{listErr: fmt.Errorf("broker failed")}
-	c := cli.New(mock)
+	c := New(mock)
 
 	err := c.ListInstances()
 
