@@ -7,8 +7,6 @@ import (
 	"sorcerer.nz/autoctm/internal/broker"
 )
 
-const BrokerSocket = "/tmp/autoctm/autoctm-broker.sock"
-
 type InstanceContext struct {
 	ID        string
 	Status    string
