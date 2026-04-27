@@ -6,13 +6,12 @@ import (
 	"net"
 	"os"
 	"sorcerer.nz/autoctm/internal/cli"
+	"sorcerer.nz/autoctm/internal/protocol"
 )
-
-const BrokerSocket = "/tmp/autoctm/autoctm-broker.sock"
 
 // Attempt conection to broker
 func attemptConn() (net.Conn, error) {
-    return net.Dial("unix", BrokerSocket)
+    return net.Dial("unix", SocketPath)
 }
 
 // Initilize Broker

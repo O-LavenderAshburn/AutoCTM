@@ -1,6 +1,7 @@
 package cli
 
-import ("fmt"
+import (
+    "fmt"
 	"encoding/json"
 )
 

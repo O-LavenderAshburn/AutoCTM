@@ -1,9 +1,8 @@
 package cli
 
 import (
-	"fmt"
+    "fmt"
     "encoding/json"
-
 )
 
 
