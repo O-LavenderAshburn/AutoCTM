@@ -1,15 +1,44 @@
 package cli
 
 import (
-	"fmt"
 	"time"
 	"net"
 	"encoding/json"
+    "encoding/binary"
+    "io"
 )
+
+
+type Response struct {
+    OK   bool            `json:"ok"`
+    Body json.RawMessage `json:"body"`
+}
 
 type Command struct {
     Cmd  	string          `json:"cmd"`
     Args 	json.RawMessage `json:"args,omitempty"` // omitted if nil
+}
+
+func (c *CLI) recv() (Response, error) {
+    // Read length prefix
+    var length uint32
+    if err := binary.Read(c.conn, binary.BigEndian, &length); err != nil {
+        return Response{}, err
+    }
+
+    // Read the body
+    buf := make([]byte, length)
+    if _, err := io.ReadFull(c.conn, buf); err != nil {
+        return Response{}, err
+    }
+
+    // Unmarshal into Response
+    var resp Response
+    if err := json.Unmarshal(buf, &resp); err != nil {
+        return Response{}, err
+    }
+
+    return resp, nil
 }
 
 // Send a command.

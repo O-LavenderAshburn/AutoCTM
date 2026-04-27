@@ -1,6 +1,8 @@
 package cli
 
-import ("fmt")
+import ("fmt"
+	"encoding/json"
+)
 
 type LogArgs struct {
     InstanceID string `json:"instanceId"`
