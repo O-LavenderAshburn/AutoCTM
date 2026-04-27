@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sorcerer.nz/autoctm/internal/broker"
 	"sorcerer.nz/autoctm/internal/cli"
 )
 
@@ -19,7 +18,6 @@ func attemptConn() (net.Conn, error) {
 // Initilize Broker
 func initBroker(){
 	fmt.Printf("Broker Init")
-
 }
 
 func main() {
@@ -40,7 +38,7 @@ func main() {
 	// Attempt to connect to broker
 	conn, err := attemptConn()
 	if err != nil {
-		fmt.Printf("No broker ")
+		fmt.Printf("No broker")
 		os.Exit(1)
 	}	
 

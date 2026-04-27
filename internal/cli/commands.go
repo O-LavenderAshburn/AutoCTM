@@ -5,6 +5,17 @@ import (
 )
 
 
+type SetContextArgs struct {
+	InstanceID string `json:"instanceId"`
+}
+
+
+
+//Send command to broker
+func (c *CLI) Start() error {
+    return c.send("start-instance", nil)
+}
+
 
 // List all registered instances, their IDs, and current status.
 //TODO: Fix in Specs document
@@ -29,11 +40,11 @@ func (c *CLI) ListInstances() error {
 
 // Set the active instance context for the CLI.
 // Future commands will target this instance.
-func (c *CLI) SetContext(instanceID string) {
-	inst, err := c.broker.GetInstance(instanceID)
-	if err != nil {
-		return
-	}
+func (c *CLI) SetContext(instanceID string) error {
+    return c.send("set-context", SetContextArgs{
+        InstanceID: instanceID,
+    })
+
 
 	c.context = &InstanceContext{
 		ID:        inst.ID,
