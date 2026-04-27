@@ -19,3 +19,6 @@ In short
 ## How CT works
 
 Certificate Transparency solves the problem of rogue certificate issuance by requiring every CA to submit certificates to public, append-only logs before browsers will trust them. This means anyone can monitor these logs to spot unauthorized certificates for their domain, and browsers will outright reject any certificate that lacks proof of being logged.
+
+# Disclaimer
+AutoCTM is provided as-is, without warranty of any kind. It is intended as a monitoring aid only and may not detect all certificates issued for your domains. Do not rely solely on this tool for security decisions. The authors accept no liability for any damages arising from its use or from missed detections.
