@@ -1,7 +1,9 @@
 package instance
 
-import ("time"
-        "encoding/json")
+import (
+    "time"
+    "encoding/json"
+)
         
 type Instance struct {
     ID        string

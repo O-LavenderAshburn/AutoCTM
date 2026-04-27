@@ -6,6 +6,7 @@ import (
 
 	"sorcerer.nz/autoctm/internal/instance"
 )
+
 func TestStart_Success(t *testing.T) {
 	mock := &mockBroker{startID: "inst-1"}
 	c := New(mock)
