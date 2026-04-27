@@ -17,7 +17,6 @@ type Broker interface {
 	GetInstance(id string) (*instance.Instance, error)
 }
 
-type simpleBroker struct{}
 
 func New() Broker {
 	return &simpleBroker{}
