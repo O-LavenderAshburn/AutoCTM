@@ -1,16 +1,22 @@
 package protocol
 
+import "encoding/json"
+
 type Response struct {
-    OK   bool            `json:"ok"`
-    Body json.RawMessage `json:"body"`
+	OK    bool            `json:"ok"`
+	Body  json.RawMessage `json:"body,omitempty"`
+	Data  any             `json:"data,omitempty"`
+	Error string          `json:"error,omitempty"`
 }
 
 type Command struct {
-    Cmd  	string          `json:"cmd"`
-    Args 	json.RawMessage `json:"args,omitempty"` // omitted if nil
+	Cmd  string          `json:"cmd"`
+	Args json.RawMessage `json:"args,omitempty"`
+	ID   string          `json:"id,omitempty"`
+	URL  string          `json:"url,omitempty"`
 }
 
 const (
-    SocketPath = "/tmp/autoctm/autoctm-broker.sock"
-    SocketDir  = "/tmp/autoctm"
+	SocketPath = "/tmp/autoctm/autoctm-broker.sock"
+	SocketDir  = "/tmp/autoctm"
 )
