@@ -10,16 +10,12 @@ type SetContextArgs struct {
 	InstanceID string `json:"instanceId"`
 }
 
-
-
 //Send command to broker
 func (c *CLI) Start() error {
     return c.send("start-instance", nil)
 }
 
-
 // List all registered instances, their IDs, and current status.
-//TODO: Fix in Specs document
 func (c *CLI) ListInstances() error {
     response, err := c.sendAndWait("list-instances", nil)
     if err != nil {
