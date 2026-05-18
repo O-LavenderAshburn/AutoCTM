@@ -16,7 +16,21 @@ This document is the Software Design Specification for AutoCTM, a Certificate Tr
 \newpage
 \tableofcontents
 \newpage
-
+\begin{table}[h]
+\centering
+\begin{tabular}{|c|c|c|p{7cm}|}
+\hline
+\textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Description} \\
+\hline
+0.1 & 2025-03-24 & Oscar Ashburn& Initial draft \\
+\hline
+& & & \\
+\hline
+& & & \\
+\hline
+\end{tabular}
+\caption{Revision History}
+\end{table}
 \section{Introduction}
 
 \subsection{Purpose}
@@ -151,7 +165,7 @@ separation of responsibilities:
     and retry registration periodically.
     \item The instance spawns one goroutine per configured log and enters
     its polling loop.
-    \item On \texttt{/shutdown} (targeted or global), the broker signals the
+    \item On \texttt{/shutdown} the broker signals the
     instance to drain its current work and exit cleanly.
     \item On exit, the instance updates its status to \texttt{stopped} in
     the database.
@@ -194,13 +208,13 @@ The CLI operates in one of two contexts at any time:
 
 \paragraph{Global Context}
 When no active instance is selected, the CLI may execute system-level or
-read-only broker commands:
+read-only broker commands. The commands sent are to be in a \textbf{JSON Object}:
 
 \begin{itemize}
     \item \texttt{/start} --- Instruct the broker to spawn a new monitor
     instance. The broker persists the instance in the database and returns
     the instance ID.
-    \item \texttt{/get-instances} --- List all registered instances and
+    \item \texttt{/list-instances} --- List all registered instances and
     their status.
     \item \texttt{/set-instance <instanceID>} --- Select an active instance
     for subsequent commands.
@@ -225,7 +239,7 @@ commands are routed through the broker.
     including logs, last STH, and alert counts.
     \item \texttt{/shutdown} --- Shut down the selected instance only via broker.
     instance only.
-    \item \texttt{/clear-instance} --- Return CLI to global context.
+    \item \texttt{/exit} --- Return CLI to global context.
 \end{itemize}
 
 \subsubsection{Auto-Spawn Behaviour}
@@ -240,9 +254,8 @@ operator.
 The broker is responsible for orchestration only. It shall:
 \begin{itemize}
     \item Own and maintain the local control socket.
-    \item Maintain an in-memory instance registry of connected instances,
-    backed by the database as the source of truth.
-    \item Route CLI commands to the correct instance.
+    \item Use database registry of connected instances.
+    \item Accept and route CLI commands to the correct instance.
     \item Spawn new instance processes on \texttt{/start}, writing the new
     instance record to the database before spawning.
     \item Accept re-registration from instances after a broker restart.
@@ -354,7 +367,7 @@ Stores instance identity, status, and configuration. This is the source of
 truth for instance configuration --- instances load directly from this table
 on startup.
 \begin{itemize}
-    \item \texttt{id} --- Name.
+    \item \texttt{Name} --- Name of instance.
     \item \texttt{id} --- Instance ID (UUID).
     \item \texttt{pid} --- OS process ID.
     \item \texttt{status} --- Current status (\texttt{running},
