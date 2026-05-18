@@ -1,28 +1,30 @@
 package main
 
 import (
-	"os"
+	"encoding/json"
+	"fmt"
 	"net"
-	"sorcerer.nz/autoctm/internal/protocol"
+	"os"
+	"os/signal"
+	"syscall"
 	"sorcerer.nz/autoctm/internal/broker"
+	"sorcerer.nz/autoctm/internal/protocol"
 )
-
-
 //handleSignals waits for a termination signal and cleans up before exit.
 //Closing the listener causes Accept() in the main loop to return an error,
 //which exits the broker gracefully.
 func handleSignals(listener net.Listener) {
-    sig := make(chan os.Signal, 1)
-    signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-    <-sig
-    os.Remove(BrokerSocket)
-    listener.Close()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+	os.Remove(protocol.SocketPath)
+	listener.Close()
 }
 
 //Dispatch commands received.
-func dispatch(req Request, b broker.Broker) Response {
-	switch req.Command {
-	case "start":
+func dispatch(req protocol.Command, b broker.Broker) protocol.Response {
+	switch req.Cmd {
+	case "start-instance":
 		id, err := b.StartInstance()
 		return respond(id, err)
 	case "stop":
@@ -42,10 +44,9 @@ func dispatch(req Request, b broker.Broker) Response {
 	case "remove-log":
 		return respond(nil, b.RemoveLog(req.ID, req.URL))
 	default:
-		return Response{Error: fmt.Sprintf("unknown command: %s", req.Command)}
+		return protocol.Response{Error: fmt.Sprintf("unknown command: %s", req.Cmd)}
 	}
 }
-
 
 func handleConn(conn net.Conn, b broker.Broker) {
 	defer conn.Close()
@@ -54,40 +55,42 @@ func handleConn(conn net.Conn, b broker.Broker) {
 	enc := json.NewEncoder(conn)
 
 	for {
-		var req Request
+		var req protocol.Command
 		if err := dec.Decode(&req); err != nil {
-			return // client disconnected
+			return
 		}
-
 		resp := dispatch(req, b)
 		enc.Encode(resp)
 	}
 }
 
-func respond(data any, err error) Response {
+func respond(data any, err error) protocol.Response {
 	if err != nil {
-		return Response{Error: err.Error()}
+		return protocol.Response{Error: err.Error()}
 	}
-	return Response{Data: data}
+	return protocol.Response{Data: data}
 }
 
 
 func main(){
 
 	//Setup freash socket and listen.
-	os.MkdirAll(SocketDir, 0755)
-	os.Remove(SocketPath)
-	
-	listner,err := net.Listen("unix", SocketPath)
+	fmt.Println("Starting socket")
+	os.MkdirAll(protocol.SocketDir, 0755)
+	os.Remove(protocol.SocketPath)
+
+	listener, err := net.Listen("unix", protocol.SocketPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to listen: %v\n", err)
 		os.Exit(1)
+	} else {
+		fmt.Printf("Socket listening on: %s\n", protocol.SocketPath)
 	}
 
 	b := broker.New()
 
 	//Handle termination signals
-	go handleSignal(listner)
+	go handleSignals(listener)
 
 	//Accept connection.
 	for {
