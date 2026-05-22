@@ -2,9 +2,12 @@ package broker
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"sync"
 
-	"sorcerer.nz/autoctm/internal/instance"
 	"github.com/google/uuid"
+	"sorcerer.nz/autoctm/internal/instance"
 )
 
 type Broker interface {
@@ -19,49 +22,27 @@ type Broker interface {
 }
 
 type instanceBroker struct {
-    mu        sync.Mutex
-    instances map[string]*managedInstance
+	mu        sync.Mutex
+	instances map[string]*managedInstance
 }
 
-type  managedInstance struct {
-	id string
-	process *os.process
-	conn net.Conn
-	status string
+type managedInstance struct {
+	id      string
+	process *os.Process
+	conn    net.Conn
+	status  string
 }
-
-
 
 func New() Broker {
 	return &instanceBroker{}
 }
 
 func (b *instanceBroker) StartInstance() (string, error) {
-    // Generate a UUID for the instance (will become the DB primary key later)
-    id := uuid.New().String()
+	// Generate a UUID for the instance (will become the DB primary key later)
+	id := uuid.New().String()
+	fmt.Printf("Recv command")
 
-    // Spawn autoctm-instance as a child process, passing only the ID per spec 3.2.3
-    cmd := exec.Command("autoctm-instance", id)
-    if err := cmd.Start(); err != nil {
-        return "", fmt.Errorf("failed to spawn instance: %w", err)
-    }
-
-    b.mu.Lock()
-    b.instances[id] = &managedInstance{
-        id:      id,
-        process: cmd.Process,
-        status:  "running",
-    }
-    b.mu.Unlock()
-
-    // Wait for the process to exit in the background.
-
-	// TODO: Implement in IPC
-	// Dispatch the Grim Reaper on process to avoid Zombies.
-	go func() { cmd.Wait() }()
-
-    fmt.Printf("[broker] started instance %s (pid %d)\n", id, cmd.Process.Pid)
-    return id, nil
+	return id, nil
 }
 
 func (b *instanceBroker) StopInstance(id string) error {

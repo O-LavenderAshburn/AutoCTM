@@ -3,9 +3,7 @@ package protocol
 import "encoding/json"
 
 type Response struct {
-	OK    bool            `json:"ok"`
-	Body  json.RawMessage `json:"body,omitempty"`
-	Data  any             `json:"data,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
 	Error string          `json:"error,omitempty"`
 }
 

@@ -1,38 +1,15 @@
 package cli
 
 import (
-	"encoding/binary"
 	"encoding/json"
-	"io"
 	"net"
 	"time"
 
 	"sorcerer.nz/autoctm/internal/protocol"
 )
 
-func (c *CLI) recv() (protocol.Response, error) {
-    // Read length prefix 
-	var length uint32
-	if err := binary.Read(c.conn, binary.BigEndian, &length); err != nil {
-		return protocol.Response{}, err
-	}
-    // Read the body 
-	buf := make([]byte, length)
-	if _, err := io.ReadFull(c.conn, buf); err != nil {
-		return protocol.Response{}, err
-	}
-
-	var resp protocol.Response
-	if err := json.Unmarshal(buf, &resp); err != nil {
-		return protocol.Response{}, err
-	}
-
-	return resp, nil
-}
-
 func (c *CLI) send(cmd string, args any) error {
 	command := protocol.Command{Cmd: cmd}
-
 	if args != nil {
 		encodedArgs, err := json.Marshal(args)
 		if err != nil {
@@ -40,19 +17,15 @@ func (c *CLI) send(cmd string, args any) error {
 		}
 		command.Args = encodedArgs
 	}
+	return c.enc.Encode(command)
+}
 
-	data, err := json.Marshal(command)
-	if err != nil {
-		return err
+func (c *CLI) recv() (protocol.Response, error) {
+	var resp protocol.Response
+	if err := c.dec.Decode(&resp); err != nil {
+		return protocol.Response{}, err
 	}
-
-	length := uint32(len(data))
-	if err := binary.Write(c.conn, binary.BigEndian, length); err != nil {
-		return err
-	}
-
-	_, err = c.conn.Write(data)
-	return err
+	return resp, nil
 }
 
 func (c *CLI) sendAndWait(cmd string, args any) (protocol.Response, error) {
@@ -71,11 +44,15 @@ type InstanceContext struct {
 
 type CLI struct {
 	conn    net.Conn
+	enc     *json.Encoder
+	dec     *json.Decoder
 	context *InstanceContext
 }
 
 func New(conn net.Conn) *CLI {
 	return &CLI{
 		conn: conn,
+		enc:  json.NewEncoder(conn),
+		dec:  json.NewDecoder(conn),
 	}
 }

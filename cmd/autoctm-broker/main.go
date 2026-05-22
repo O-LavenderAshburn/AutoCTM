@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
 	"sorcerer.nz/autoctm/internal/broker"
 	"sorcerer.nz/autoctm/internal/protocol"
 )
-//handleSignals waits for a termination signal and cleans up before exit.
-//Closing the listener causes Accept() in the main loop to return an error,
-//which exits the broker gracefully.
+
+// handleSignals waits for a termination signal and cleans up before exit.
+// Closing the listener causes Accept() in the main loop to return an error,
+// which exits the broker gracefully.
 func handleSignals(listener net.Listener) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -21,7 +23,7 @@ func handleSignals(listener net.Listener) {
 	listener.Close()
 }
 
-//Dispatch commands received.
+// Dispatch commands received.
 func dispatch(req protocol.Command, b broker.Broker) protocol.Response {
 	switch req.Cmd {
 	case "start-instance":
@@ -57,10 +59,13 @@ func handleConn(conn net.Conn, b broker.Broker) {
 	for {
 		var req protocol.Command
 		if err := dec.Decode(&req); err != nil {
+			enc.Encode(protocol.Response{Error: fmt.Sprintf("decode error: %v", err)})
 			return
 		}
 		resp := dispatch(req, b)
-		enc.Encode(resp)
+		if err := enc.Encode(resp); err != nil {
+			return
+		}
 	}
 }
 
@@ -68,13 +73,19 @@ func respond(data any, err error) protocol.Response {
 	if err != nil {
 		return protocol.Response{Error: err.Error()}
 	}
-	return protocol.Response{Data: data}
+	if data == nil {
+		return protocol.Response{}
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return protocol.Response{Error: err.Error()}
+	}
+	return protocol.Response{Data: raw}
 }
 
+func main() {
 
-func main(){
-
-	//Setup freash socket and listen.
+	//Setup fresh socket and listen.
 	fmt.Println("Starting socket")
 	os.MkdirAll(protocol.SocketDir, 0755)
 	os.Remove(protocol.SocketPath)
@@ -98,6 +109,7 @@ func main(){
 		if err != nil {
 			return
 		}
+		fmt.Println("ACCEPTED connection from:", conn.RemoteAddr())
 		go handleConn(conn, b)
 	}
 }
